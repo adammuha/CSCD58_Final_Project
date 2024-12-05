@@ -2,6 +2,7 @@
 #include <iostream>
 #include <set>
 #include <limits> 
+#include <algorithm>
 
 namespace ns3 {
 
@@ -115,3 +116,9 @@ std::map<uint32_t, uint32_t> LinkStateRouting::ComputeRoutingTable() {
 }
 
 } 
+
+int
+main(int argc, char* argv[])
+{
+    return 0;
+}
