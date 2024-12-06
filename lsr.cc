@@ -4,25 +4,54 @@
 #include "ns3/point-to-point-module.h"
 #include "ns3/applications-module.h"
 #include "ns3/ipv4-global-routing-helper.h"
-//#include "ns3/link-state-routing-helper.h"  // This or similar header if using custom implementation
+#include "link-state-routing-helper.h"
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("LSRScript"); //built this based from first.cc
+NS_LOG_COMPONENT_DEFINE("LSRScript"); 
 
 class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
     public:
-        static TypeId GetTypeId(void);
+        /* commented out due to compile issues with the rest unimplemented properly
+        static TypeId GetTypeId(void)
+        {
+            static TypeId tid = TypeId("ns3::LinkStateRoutingProtocol")
+                .SetParent<Ipv4RoutingProtocol>()
+                .AddConstructor<LinkStateRoutingProtocol>()
+                ;
+            return tid;
+        }*/
         LinkStateRoutingProtocol();
         virtual ~LinkStateRoutingProtocol();
         // Inherited methods from Ipv4RoutingProtocol
         //Ptr<Ipv4Route> RouteOutput(Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr) override;
         //bool RouteInput(Ptr<const Packet> p, const Ipv4Header &header, Ptr<const NetDevice> idev, UnicastForwardCallback ucb, MulticastForwardCallback mcb, LocalDeliverCallback lcb, ErrorCallback ecb) override;
-        void NotifyInterfaceUp(uint32_t interface) override;
-        void NotifyInterfaceDown(uint32_t interface) override;
-        void NotifyAddAddress(uint32_t interface, Ipv4InterfaceAddress address) override;
-        void NotifyRemoveAddress(uint32_t interface, Ipv4InterfaceAddress address) override;
-        void SetIpv4(Ptr<Ipv4> ipv4) override;
+
+        /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
+        void NotifyInterfaceUp(uint32_t interface) override
+        {
+            //LinkStateRouting::ComputeRoutingTable(); //not sure what notification expected, but if an interface goes up/down, recompute the table seems the move
+        }
+
+        /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
+        void NotifyInterfaceDown(uint32_t interface) override
+        {
+            //LinkStateRouting::ComputeRoutingTable();
+        }
+        void NotifyAddAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
+            /* Protocols are expected to implement this method to be notified whenever a new address is added to an interface. 
+            Typically used to add a 'network route' on an interface. Can be invoked on an up or down interface. */
+
+        }
+        void NotifyRemoveAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
+            /* Protocols are expected to implement this method to be notified whenever a new address is removed from an interface. 
+            Typically used to remove the 'network route' of an interface. Can be invoked on an up or down interface.
+            */
+        }
+        void SetIpv4(Ptr<Ipv4> ipv4) override
+        {
+            m_ipv4 = ipv4;
+        }
         
 
     private:
