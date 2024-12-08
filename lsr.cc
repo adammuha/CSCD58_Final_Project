@@ -24,19 +24,61 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         LinkStateRoutingProtocol();
         virtual ~LinkStateRoutingProtocol();
         // Inherited methods from Ipv4RoutingProtocol
-        //Ptr<Ipv4Route> RouteOutput(Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr) override;
-        //bool RouteInput(Ptr<const Packet> p, const Ipv4Header &header, Ptr<const NetDevice> idev, UnicastForwardCallback ucb, MulticastForwardCallback mcb, LocalDeliverCallback lcb, ErrorCallback ecb) override;
+        Ptr<Ipv4Route> RouteOutput(Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr) override
+        {
+            uint32_t dest = header.GetDestination().Get();
+
+            if (m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
+                uint32_t next = m_lsroutingTable[dest];
+                Ptr<Ipv4Route> route = Create<Ipv4Route>();
+                route->SetSource(); //TODO: get source for route and set it to that
+                route->SetDestination(Ipv4Address(dest));
+                route->SetGateway(Ipv4Address(next));
+                route->SetOutputDevice(oif);
+                
+                return route;
+            }
+
+            //https://www.nsnam.org/docs/release/3.19/doxygen/classns3_1_1_socket.html#ada1328c5ae0c28cb2a982caf8f6d6ccaa0f8ecb5a4ddbce3bade35fa12c3d49e8
+            sockerr = Socket::ERROR_NOROUTETOHOST;
+            return NULL;
+        }
+        bool RouteInput(Ptr<const Packet> p, const Ipv4Header &header, Ptr<const NetDevice> idev, UnicastForwardCallback ucb, MulticastForwardCallback mcb, LocalDeliverCallback lcb, ErrorCallback ecb) override
+        {
+            uint32_t dest = header.GetDestination().Get();
+            
+            if (m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
+                uint32_t next = m_lsroutingTable[dest];
+                ucb(p, header, Ipv4Address(next));
+                return true;
+            }
+            
+            ecb(p, header);
+            return false;
+        }
 
         /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
         void NotifyInterfaceUp(uint32_t interface) override
         {
-            //LinkStateRouting::ComputeRoutingTable(); //not sure what notification expected, but if an interface goes up/down, recompute the table seems the move
+            LinkStateAdvertisement newlsa;
+
+            m_lsrouting->InitializeLsa(newlsa);
+
+            //notify other routers and then update the routing table
+            SendLinkStateAdvertisement();
+
+            UpdateRoutingTable();
         }
 
         /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
         void NotifyInterfaceDown(uint32_t interface) override
-        {
-            //LinkStateRouting::ComputeRoutingTable();
+        {   
+            //no function for remove lsa?
+
+            //notify other routers and then update the routing table
+            SendLinkStateAdvertisement();
+
+            UpdateRoutingTable();
         }
         void NotifyAddAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
             /* Protocols are expected to implement this method to be notified whenever a new address is added to an interface. 
@@ -62,20 +104,41 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         // ...
         Ptr<Ipv4> m_ipv4;
         std::map<Ipv4Address, Ptr<Socket>> m_socketMap;
+        //store a link state routing class and routing table?
+        Ptr<LinkStateRouting> m_lsrouting;
+        std::map<uint32_t, uint32_t> m_lsroutingTable;
         // ...
 };
 
 void LinkStateRoutingProtocol::SendLinkStateAdvertisement() {
     // Create and send LSA packets
+
 }
 
 void LinkStateRoutingProtocol::ReceiveLinkStateAdvertisement(Ptr<Socket> socket) {
     // Process received LSA packets and update routing table
+
 }
 
 void LinkStateRoutingProtocol::UpdateRoutingTable() {
     // Compute shortest paths using Dijkstra’s algorithm
+
+    m_lsroutingTable = m_lsrouting->ComputeRoutingTable();
 }
+
+//Constructor
+LinkStateRoutingProtocol::LinkStateRoutingProtocol() 
+    : m_ipv4(0)
+{
+    //m_lsrouting = Create<LinkStateRouting>(0); //how are we picking router ids?
+    UpdateRoutingTable();
+}
+
+//Deconstructor
+LinkStateRoutingProtocol::~LinkStateRoutingProtocol()
+{
+}
+
 
 int
 main(int argc, char* argv[])

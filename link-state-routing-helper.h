@@ -4,6 +4,7 @@
 #include <map>
 #include <vector>
 #include <cstdint>
+#include "ns3/object.h"
 
 namespace ns3 {
 
@@ -33,7 +34,7 @@ private:
 };
 
 // Class to manage LSP flooding and LSDB updates
-class LinkStateRouting {
+class LinkStateRouting : public Object{
 public:
     LinkStateRouting(uint32_t routerId);
     void InitializeLsa(const LinkStateAdvertisement& lsa);
