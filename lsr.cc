@@ -391,6 +391,9 @@ main(int argc, char* argv[])
     CommandLine cmd;
     cmd.Parse(argc, argv);
 
+    LogComponentEnable("UdpEchoClientApplication", LOG_LEVEL_INFO);
+    LogComponentEnable("UdpEchoServerApplication", LOG_LEVEL_INFO);
+
     NodeContainer nodes;
     nodes.Create(4);
 
@@ -431,7 +434,7 @@ main(int argc, char* argv[])
     apps.Start(Seconds(1.0));
     apps.Stop(Seconds(10.0));
 
-    UdpEchoClientHelper client(interfaces.GetAddress(3), port);
+    UdpEchoClientHelper client(interfaces.GetAddress(1), port);
     client.SetAttribute("MaxPackets", UintegerValue(1));
     client.SetAttribute("Interval", TimeValue(Seconds(1.0)));
     client.SetAttribute("PacketSize", UintegerValue(1024));
