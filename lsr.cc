@@ -194,6 +194,13 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         LinkStateRoutingProtocol();
         virtual ~LinkStateRoutingProtocol();
         // Inherited methods from Ipv4RoutingProtocol
+
+        /*Query routing cache for an existing route, for an outbound packet.
+        This lookup is used by transport protocols. It does not cause any packet to be forwarded, and is synchronous. 
+        Can be used for multicast or unicast. The Linux equivalent is ip_route_output()
+        The header input parameter may have an uninitialized value for the source address, but the destination address should always 
+        be properly set by the caller.*/
+        //https://www.nsnam.org/docs/release/3.19/doxygen/classns3_1_1_ipv4_routing_protocol.html#a9c0e9b77772a4974c06ee4577fe60547
         Ptr<Ipv4Route> RouteOutput(Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr) override
         {
             uint32_t dest = header.GetDestination().Get();
@@ -213,6 +220,12 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
             sockerr = Socket::ERROR_NOROUTETOHOST;
             return NULL;
         }
+
+        /* Route an input packet (to be forwarded or locally delivered)
+        This lookup is used in the forwarding process. The packet is handed over to the Ipv4RoutingProtocol, and 
+        will get forwarded onward by one of the callbacks. The Linux equivalent is ip_route_input(). There are four 
+        valid outcomes, and a matching callbacks to handle each.*/
+        //https://www.nsnam.org/docs/release/3.19/doxygen/classns3_1_1_ipv4_routing_protocol.html#a67e815ff40ebb9f5f4eec4e22e23132e
         bool RouteInput(Ptr<const Packet> p, const Ipv4Header &header, Ptr<const NetDevice> idev, UnicastForwardCallback ucb, MulticastForwardCallback mcb, LocalDeliverCallback lcb, ErrorCallback ecb)
         {
             uint32_t dest = header.GetDestination().Get();
@@ -317,7 +330,7 @@ LinkStateRoutingProtocol::~LinkStateRoutingProtocol()
 {
 }
 
-NS_OBJECT_ENSURE_REGISTERED(LinkStateRoutingProtocol);
+//NS_OBJECT_ENSURE_REGISTERED(LinkStateRoutingProtocol);
 
 
 //note: inspiration from https://www.nsnam.org/docs/release/3.19/doxygen/aodv-helper_8cc_source.html#l00043
