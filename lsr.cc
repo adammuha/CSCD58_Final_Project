@@ -257,9 +257,9 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
             return false;
         }
 
+        /*Print the Routing Table entries. */
         void PrintRoutingTable(ns3::Ptr<ns3::OutputStreamWrapper>, ns3::Time::Unit) const override
         {
-            /*Print the Routing Table entries. */
         }
 
         /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
@@ -308,7 +308,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         // Data structures for routing table and LSA management
         // ...
         Ptr<Ipv4> m_ipv4;
-        std::map<Ipv4Address, Ptr<Socket>> m_socketMap;
+        std::map<Ptr<Socket>, Ipv4InterfaceAddress> m_socketMap;
         //store a link state routing class and routing table?
         Ptr<LinkStateRouting> m_lsrouting;
         std::map<uint32_t, uint32_t> m_lsroutingTable;
@@ -322,7 +322,13 @@ void LinkStateRoutingProtocol::SendLinkStateAdvertisement() {
 
 // Process received LSA packets and update routing table
 void LinkStateRoutingProtocol::ReceiveLinkStateAdvertisement(Ptr<Socket> socket) {
-    UpdateRoutingTable();
+    Address source;
+    Ptr<Packet> p = socket->RecvFrom(source);
+
+    InetSocketAddress inetSource = InetSocketAddress::ConvertFrom(source);
+    Ipv4Address sender = inetSource.GetIpv4();
+    Ipv4Address receiver = m_socketAddresses[socket].GetLocal();
+
 }
 
 // Compute shortest paths using Dijkstra’s algorithm
