@@ -28,7 +28,7 @@
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("LSRScript"); 
+NS_LOG_COMPONENT_DEFINE("LinkStateRoutingProtocol"); 
 
 // Structure to represent a Link State Advertisement (LSA)
 struct LinkStateAdvertisement {
@@ -182,15 +182,14 @@ std::map<uint32_t, uint32_t> LinkStateRouting::ComputeRoutingTable() {
 
 class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
     public:
-        // commented out due to compile issues with the rest unimplemented properly. Currently due to RouteInput giving an error concerning override
-        /*static TypeId GetTypeId(void)
+        static TypeId GetTypeId(void)
         {
-            static TypeId tid = TypeId("ns3::LinkStateRoutingProtocol")
+            static TypeId tid = TypeId("LinkStateRoutingProtocol")
                 .SetParent<Ipv4RoutingProtocol>()
                 .AddConstructor<LinkStateRoutingProtocol>()
                 ;
             return tid;
-        }*/
+        }
         LinkStateRoutingProtocol();
         virtual ~LinkStateRoutingProtocol();
         // Inherited methods from Ipv4RoutingProtocol
@@ -226,7 +225,9 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         will get forwarded onward by one of the callbacks. The Linux equivalent is ip_route_input(). There are four 
         valid outcomes, and a matching callbacks to handle each.*/
         //https://www.nsnam.org/docs/release/3.19/doxygen/classns3_1_1_ipv4_routing_protocol.html#a67e815ff40ebb9f5f4eec4e22e23132e
-        bool RouteInput(Ptr<const Packet> p, const Ipv4Header &header, Ptr<const NetDevice> idev, UnicastForwardCallback ucb, MulticastForwardCallback mcb, LocalDeliverCallback lcb, ErrorCallback ecb)
+        //bool RouteInput(Ptr<const Packet> p, const Ipv4Header &header, Ptr<const NetDevice> idev, UnicastForwardCallback ucb, MulticastForwardCallback mcb, LocalDeliverCallback lcb, ErrorCallback ecb) override
+        // NOTE: TODO /POSSIBLE ISSUE: FOR SOME REASON IT DOESN'T COUNT IT AS OVERRIDE UNLESS THE ARGUMENTS HAVE CALLBACK& INSTEAD OF CALLBACK. THE DOCS ARE DIFFERENT THOUGH.
+        bool RouteInput(ns3::Ptr<const ns3::Packet> p, const ns3::Ipv4Header& header, ns3::Ptr<const ns3::NetDevice> idev, const UnicastForwardCallback& ucb, const MulticastForwardCallback& mcb, const LocalDeliverCallback& lcb, const ErrorCallback& ecb) override
         {
             uint32_t dest = header.GetDestination().Get();
             
@@ -245,6 +246,11 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
             }
 
             return false;
+        }
+
+        void PrintRoutingTable(ns3::Ptr<ns3::OutputStreamWrapper>, ns3::Time::Unit) const override
+        {
+
         }
 
         /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
@@ -330,7 +336,7 @@ LinkStateRoutingProtocol::~LinkStateRoutingProtocol()
 {
 }
 
-//NS_OBJECT_ENSURE_REGISTERED(LinkStateRoutingProtocol);
+NS_OBJECT_ENSURE_REGISTERED(LinkStateRoutingProtocol);
 
 
 //note: inspiration from https://www.nsnam.org/docs/release/3.19/doxygen/aodv-helper_8cc_source.html#l00043
@@ -349,7 +355,7 @@ private:
 
 LinkStateRoutingHelper::LinkStateRoutingHelper()
 {
-    m_agentFactory.SetTypeId("ns3::LinkStateRoutingProtocol");
+    m_agentFactory.SetTypeId("LinkStateRoutingProtocol");
 }
 
 LinkStateRoutingHelper::LinkStateRoutingHelper(const LinkStateRoutingHelper &o)
