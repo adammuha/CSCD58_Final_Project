@@ -16,6 +16,16 @@
 #include <limits> 
 #include <algorithm>
 
+#include "ns3/node-list.h"
+#include "ns3/names.h"
+#include "ns3/ptr.h"
+#include "ns3/ipv4-list-routing.h"
+
+#include "ns3/object-factory.h"
+#include "ns3/node.h"
+#include "ns3/node-container.h"
+#include "ns3/ipv4-routing-helper.h"
+
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("LSRScript"); 
@@ -203,7 +213,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
             sockerr = Socket::ERROR_NOROUTETOHOST;
             return NULL;
         }
-        bool RouteInput(Ptr<const Packet> p, const Ipv4Header &header, Ptr<const NetDevice> idev, UnicastForwardCallback ucb, MulticastForwardCallback mcb, LocalDeliverCallback lcb, ErrorCallback ecb) override
+        bool RouteInput(Ptr<const Packet> p, const Ipv4Header &header, Ptr<const NetDevice> idev, UnicastForwardCallback ucb, MulticastForwardCallback mcb, LocalDeliverCallback lcb, ErrorCallback ecb)
         {
             uint32_t dest = header.GetDestination().Get();
             
@@ -307,6 +317,46 @@ LinkStateRoutingProtocol::~LinkStateRoutingProtocol()
 {
 }
 
+NS_OBJECT_ENSURE_REGISTERED(LinkStateRoutingProtocol);
+
+
+//note: inspiration from https://www.nsnam.org/docs/release/3.19/doxygen/aodv-helper_8cc_source.html#l00043
+class LinkStateRoutingHelper : public Ipv4RoutingHelper
+{
+public:
+    LinkStateRoutingHelper();
+    LinkStateRoutingHelper* Copy(void) const;
+    virtual Ptr<Ipv4RoutingProtocol> Create(Ptr<Node> node) const;
+    void Set(std::string name, const AttributeValue &value);
+
+private:
+    ObjectFactory m_agentFactory;
+};
+
+LinkStateRoutingHelper::LinkStateRoutingHelper()
+{
+    m_agentFactory.SetTypeId("ns3::LinkStateRoutingProtocol");
+}
+
+LinkStateRoutingHelper* 
+LinkStateRoutingHelper::Copy (void) const 
+{
+    return new LinkStateRoutingHelper(*this); 
+}
+
+Ptr<Ipv4RoutingProtocol> 
+LinkStateRoutingHelper::Create (Ptr<Node> node) const
+{
+    Ptr<LinkStateRoutingProtocol> agent = m_agentFactory.Create<LinkStateRoutingProtocol>();
+    node->AggregateObject(agent);
+    return agent;
+}
+
+void 
+LinkStateRoutingHelper::Set (std::string name, const AttributeValue &value)
+{
+    m_agentFactory.Set(name, value);
+}
 
 int
 main(int argc, char* argv[])
@@ -338,10 +388,10 @@ main(int argc, char* argv[])
 
     // Configure Link State Routing:
     // Assuming there is a link state routing implementation
-    //LinkStateRoutingHelper linkStateRouting;              commented due to throwing error since the header's not implemented
+    LinkStateRoutingHelper linkStateRouting;
 
     Ipv4ListRoutingHelper list;
-    ///list.Add(linkStateRouting, 0);               commented due to declaration commented
+    list.Add(linkStateRouting, 0);               //commented due to declaration commented
 
     InternetStackHelper stack2;
     stack2.SetRoutingHelper(list);
