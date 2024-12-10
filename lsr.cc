@@ -40,11 +40,16 @@ using namespace ns3;
 NS_LOG_COMPONENT_DEFINE("LinkStateRoutingProtocol"); 
 
 // Structure to represent a Link State Advertisement (LSA)
+struct Link {
+    Ipv4Address neighbor;   // IPv4 address of the neighbor
+    uint32_t cost;          // Link cost
+    uint32_t next_hop_interface; // Index of the next-hop interface (or similar identifier)
+};
+
 struct LinkStateAdvertisement {
-    uint32_t routerId;                     
-    std::vector<uint32_t> neighbors; 
-    std::vector<uint32_t> linkCosts;
-    uint32_t sequenceNumber = 0;
+    Ipv4Address routerAddress;            // The IPv4 address of the router
+    std::vector<Link> links;              // List of links with neighbors and costs
+    uint32_t sequenceNumber = 0;          // Sequence number for versioning
 };
 
 // Structure to represent a Link State Packet (LSP)
@@ -57,25 +62,25 @@ struct LinkStatePacket {
 class LinkStateDatabase {
 public:
     void AddOrUpdateLsa(const LinkStateAdvertisement& lsa);
-    std::map<uint32_t, LinkStateAdvertisement> GetLsdb() const;
+    std::map<Ipv4Address, LinkStateAdvertisement> GetLsdb() const;
     bool IsNewerLsa(const LinkStateAdvertisement& lsa) const;
 
 private:
-    std::map<uint32_t, LinkStateAdvertisement> m_lsdb;  // Stores LSAs keyed by routerId
+    std::map<Ipv4Address, LinkStateAdvertisement> m_lsdb;  // Stores LSAs keyed by routerId
 };
 
 // Class to manage LSP flooding and LSDB updates
 class LinkStateRouting : public Object{
 public:
-    LinkStateRouting(uint32_t routerId);
+    LinkStateRouting(Ipv4Address routerAddress);
     void InitializeLsa(const LinkStateAdvertisement& lsa);
     void FloodLsp(const LinkStatePacket& lsp);
     void ProcessLsp(const LinkStatePacket& lsp);
-    std::map<uint32_t, LinkStateAdvertisement> GetLsdb() const;
-    std::map<uint32_t, uint32_t> ComputeRoutingTable();
+    std::map<Ipv4Address, LinkStateAdvertisement> GetLsdb() const;
+    std::map<Ipv4Address, Ipv4Address> ComputeRoutingTable();
 
 private:
-    uint32_t m_routerId;
+    Ipv4Address m_routerAddress;
     LinkStateDatabase m_lsdb;
     LinkStateAdvertisement m_lsa;
 };
@@ -84,31 +89,31 @@ private:
 
 // Add the new LSA or update the existing one
 void LinkStateDatabase::AddOrUpdateLsa(const LinkStateAdvertisement& lsa) {
-    auto it = m_lsdb.find(lsa.routerId);
+    auto it = m_lsdb.find(lsa.routerAddress);
     if (it == m_lsdb.end() || it->second.sequenceNumber < lsa.sequenceNumber) {
-        m_lsdb[lsa.routerId] = lsa;
+        m_lsdb[lsa.routerAddress] = lsa;
     }
 }
 
 // Returns the current lsdb
-std::map<uint32_t, LinkStateAdvertisement> LinkStateDatabase::GetLsdb() const {
+std::map<Ipv4Address, LinkStateAdvertisement> LinkStateDatabase::GetLsdb() const {
     return m_lsdb;
 }
 
 bool LinkStateDatabase::IsNewerLsa(const LinkStateAdvertisement& lsa) const {
-    auto it = m_lsdb.find(lsa.routerId);
+    auto it = m_lsdb.find(lsa.routerAddress);
     return (it == m_lsdb.end() || it->second.sequenceNumber < lsa.sequenceNumber);
 }
 
 // LinkStateRouting Implementation 
 
-// Initialize the router with its unique ID
-LinkStateRouting::LinkStateRouting(uint32_t routerId) : m_routerId(routerId) {
-}
+// Initialize the router with its ipv4 address
+LinkStateRouting::LinkStateRouting(Ipv4Address routerAddress) : m_routerAddress(routerAddress) {}
 
 void LinkStateRouting::InitializeLsa(const LinkStateAdvertisement& lsa) {
     m_lsa = lsa;
     m_lsdb.AddOrUpdateLsa(m_lsa);
+    std::cout << "Initialized LSA for router address: " << lsa.routerAddress << std::endl;
 }
 
 void LinkStateRouting::FloodLsp(const LinkStatePacket& lsp) {
@@ -131,63 +136,55 @@ void LinkStateRouting::ProcessLsp(const LinkStatePacket& lsp) {
     }
 }
 
-std::map<uint32_t, LinkStateAdvertisement> LinkStateRouting::GetLsdb() const {
+std::map<Ipv4Address, LinkStateAdvertisement> LinkStateRouting::GetLsdb() const {
     // Return the LSDB for debugging or route computation
     return m_lsdb.GetLsdb();
 }
 
-std::map<uint32_t, uint32_t> LinkStateRouting::ComputeRoutingTable() {
-    const auto& lsdb = m_lsdb.GetLsdb();  // Get the current LSDB
-    std::map<uint32_t, uint32_t> distances;  // Distance to each node
-    std::map<uint32_t, uint32_t> previous;   // Previous node on the shortest path
-    std::set<uint32_t> unvisited;            // Nodes yet to be visited
+std::map<Ipv4Address, Ipv4Address> LinkStateRouting::ComputeRoutingTable() {
+    const auto& lsdb = m_lsdb.GetLsdb();
+    std::map<Ipv4Address, uint32_t> distances;
+    std::map<Ipv4Address, Ipv4Address> previous;
+    std::set<Ipv4Address> unvisited;
 
-    // Step 1: Initialize distances and unvisited set
-    for (const auto& [nodeId, _] : lsdb) {
-        distances[nodeId] = std::numeric_limits<uint32_t>::max();  // Set initial distance to infinity
-        unvisited.insert(nodeId);  // Add to unvisited set
+    for (const auto& [address, lsa] : lsdb) {
+        distances[address] = std::numeric_limits<uint32_t>::max();
+        unvisited.insert(address);
     }
-    distances[m_routerId] = 0;  // Distance to self is 0
+    distances[m_routerAddress] = 0;
 
-    // Step 2: Dijkstra's algorithm
     while (!unvisited.empty()) {
-        // Find the unvisited node with the smallest distance
-        uint32_t current = *std::min_element(unvisited.begin(), unvisited.end(),
-                                             [&distances](uint32_t a, uint32_t b) {
-                                                 return distances[a] < distances[b];
-                                             });
+        Ipv4Address current = *std::min_element(unvisited.begin(), unvisited.end(),
+            [&distances](Ipv4Address a, Ipv4Address b) {
+                return distances[a] < distances[b];
+            });
+        unvisited.erase(current);
 
-        unvisited.erase(current);  // Mark current node as visited
-
-        // Update distances for neighbors of the current node
-        const auto& lsa = lsdb.at(current);
-        for (size_t i = 0; i < lsa.neighbors.size(); ++i) {
-            uint32_t neighbor = lsa.neighbors[i];
-            uint32_t linkCost = lsa.linkCosts[i];
-            if (unvisited.count(neighbor)) {  // If the neighbor is unvisited
-                uint32_t newDistance = distances[current] + linkCost;
-                if (newDistance < distances[neighbor]) {
-                    distances[neighbor] = newDistance;
-                    previous[neighbor] = current;
+        const auto& links = lsdb.at(current).links;
+        for (const auto& link : links) {
+            if (unvisited.count(link.neighbor)) {
+                uint32_t newDistance = distances[current] + link.cost;
+                if (newDistance < distances[link.neighbor]) {
+                    distances[link.neighbor] = newDistance;
+                    previous[link.neighbor] = current;
                 }
             }
         }
     }
 
-    // Step 3: Return the routing table
-    std::map<uint32_t, uint32_t> routingTable;  // Destination -> Next Hop
-    for (const auto& [node, distance] : distances) {
-        if (node != m_routerId && distance != std::numeric_limits<uint32_t>::max()) {
-            uint32_t nextHop = node;
-            while (previous[nextHop] != m_routerId) {
+    std::map<Ipv4Address, Ipv4Address> routingTable;
+    for (const auto& [address, _] : distances) {
+        if (address != m_routerAddress && distances[address] != std::numeric_limits<uint32_t>::max()) {
+            Ipv4Address nextHop = address;
+            while (previous[nextHop] != m_routerAddress) {
                 nextHop = previous[nextHop];
             }
-            routingTable[node] = nextHop;
+            routingTable[address] = nextHop;
         }
     }
-
-    return routingTable;  // Destination -> Next Hop mapping
+    return routingTable;
 }
+
 
 class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
     public:
@@ -201,7 +198,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         }
         LinkStateRoutingProtocol();
         virtual ~LinkStateRoutingProtocol();
-        // Inherited methods from Ipv4RoutingProtocol. Note many of the descriptions are from documentation on nsnam.org
+        // Inherited methods from Ipv4RoutingProtocol
 
         /*Query routing cache for an existing route, for an outbound packet.
         This lookup is used by transport protocols. It does not cause any packet to be forwarded, and is synchronous. 
@@ -209,23 +206,18 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         The header input parameter may have an uninitialized value for the source address, but the destination address should always 
         be properly set by the caller.*/
         //https://www.nsnam.org/docs/release/3.19/doxygen/classns3_1_1_ipv4_routing_protocol.html#a9c0e9b77772a4974c06ee4577fe60547
-        Ptr<Ipv4Route> RouteOutput(Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr) override
-        {
-            uint32_t dest = header.GetDestination().Get();
-
-            if (m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
-                uint32_t next = m_lsroutingTable[dest];
-                Ptr<Ipv4Route> route = Create<Ipv4Route>();
-                //route->SetSource(); //TODO: get source for route and set it to that
-                route->SetDestination(Ipv4Address(dest));
-                route->SetGateway(Ipv4Address(next));
-                route->SetOutputDevice(oif);
-                
-                return route;
-            }
-
-            //https://www.nsnam.org/docs/release/3.19/doxygen/classns3_1_1_socket.html#ada1328c5ae0c28cb2a982caf8f6d6ccaa0f8ecb5a4ddbce3bade35fa12c3d49e8
-            sockerr = Socket::ERROR_NOROUTETOHOST;
+        Ptr<Ipv4Route> RouteOutput(Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr) {
+        Ipv4Address dest = header.GetDestination();
+        if (m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
+            Ipv4Address nextHop = m_lsroutingTable[dest];
+            Ptr<Ipv4Route> route = Create<Ipv4Route>();
+            route->SetDestination(dest);
+            route->SetGateway(nextHop);
+            uint32_t interfaceIndex = m_ipv4->GetInterfaceForAddress(nextHop);
+            route->SetOutputDevice(m_ipv4->GetNetDevice(interfaceIndex));
+            return route;
+    }
+    sockerr = Socket::ERROR_NOROUTETOHOST;
             return NULL;
         }
 
@@ -238,18 +230,14 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         // NOTE: TODO /POSSIBLE ISSUE: FOR SOME REASON IT DOESN'T COUNT IT AS OVERRIDE UNLESS THE ARGUMENTS HAVE CALLBACK& INSTEAD OF CALLBACK. THE DOCS ARE DIFFERENT THOUGH.
         bool RouteInput(ns3::Ptr<const ns3::Packet> p, const ns3::Ipv4Header& header, ns3::Ptr<const ns3::NetDevice> idev, const UnicastForwardCallback& ucb, const MulticastForwardCallback& mcb, const LocalDeliverCallback& lcb, const ErrorCallback& ecb) override
         {
-            uint32_t dest = header.GetDestination().Get();
-            
-            if(m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
-                uint32_t next = m_lsroutingTable[dest];
-
-                Ipv4Address nextAdd = Ipv4Address(next);  
+            Ipv4Address dest = header.GetDestination();
+            if (m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
+                Ipv4Address nextHop = m_lsroutingTable[dest];
                 Ptr<Ipv4Route> route = Create<Ipv4Route>();
-                route->SetDestination(Ipv4Address(dest)); 
-                route->SetGateway(nextAdd);           
-                uint32_t interfaceO = m_ipv4->GetInterfaceForAddress(nextAdd);
-                route->SetOutputDevice(m_ipv4->GetNetDevice(interfaceO));        
-
+                route->SetDestination(dest);
+                route->SetGateway(nextHop);
+                uint32_t interfaceIndex = m_ipv4->GetInterfaceForAddress(nextHop);
+                route->SetOutputDevice(m_ipv4->GetNetDevice(interfaceIndex));
                 ucb(route, p, header);
                 return true;
             }
@@ -257,16 +245,17 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
             return false;
         }
 
-        /*Print the Routing Table entries. */
         void PrintRoutingTable(ns3::Ptr<ns3::OutputStreamWrapper>, ns3::Time::Unit) const override
         {
+
         }
 
         /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
         void NotifyInterfaceUp(uint32_t interface) override
         {
             LinkStateAdvertisement newlsa;
-            newlsa.routerId = 1; // TODO: How are we assigning router IDs?
+            newlsa.routerAddress = m_ipv4->GetAddress(interface, 0).GetLocal();
+
 
             m_lsrouting->InitializeLsa(newlsa);
 
@@ -279,22 +268,23 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
         void NotifyInterfaceDown(uint32_t interface) override
         {   
+            //no function for remove lsa?
+
+            //notify other routers and then update the routing table
+            SendLinkStateAdvertisement();
+
             UpdateRoutingTable();
         }
-
-        /* Protocols are expected to implement this method to be notified whenever a new address is added to an interface. 
-            Typically used to add a 'network route' on an interface. Can be invoked on an up or down interface. */
         void NotifyAddAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
-            UpdateRoutingTable();
-        }
+            /* Protocols are expected to implement this method to be notified whenever a new address is added to an interface. 
+            Typically used to add a 'network route' on an interface. Can be invoked on an up or down interface. */
 
-        /* Protocols are expected to implement this method to be notified whenever a new address is removed from an interface. 
+        }
+        void NotifyRemoveAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
+            /* Protocols are expected to implement this method to be notified whenever a new address is removed from an interface. 
             Typically used to remove the 'network route' of an interface. Can be invoked on an up or down interface.
             */
-        void NotifyRemoveAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
-           UpdateRoutingTable();
         }
-
         void SetIpv4(Ptr<Ipv4> ipv4) override
         {
             m_ipv4 = ipv4;
@@ -308,23 +298,48 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         // Data structures for routing table and LSA management
         // ...
         Ptr<Ipv4> m_ipv4;
-        std::map<Ptr<Socket>, Ipv4InterfaceAddress> m_socketMap;
+        std::map<Ipv4Address, Ptr<Socket>> m_socketMap;
         //store a link state routing class and routing table?
         Ptr<LinkStateRouting> m_lsrouting;
-        std::map<uint32_t, uint32_t> m_lsroutingTable;
+        std::map<Ipv4Address, Ipv4Address> m_lsroutingTable;
         // ...
 };
 
-// Create and send LSA packets
 void LinkStateRoutingProtocol::SendLinkStateAdvertisement() {
+    // Create an LSP for the router's current LSA
+    LinkStatePacket lsp;
+    lsp.sequenceNumber = m_lsrouting->GetLsdb().at(m_ipv4->GetAddress(0, 0).GetLocal()).sequenceNumber;
+    lsp.lsa = m_lsrouting->GetLsdb().at(m_ipv4->GetAddress(0, 0).GetLocal());
+
+    std::cout << "Router " << m_ipv4->GetAddress(0, 0).GetLocal()
+              << " sending LSA with sequence number: " << lsp.sequenceNumber << std::endl;
+
+    // Flood LSP to all neighbors
+    for (auto& [neighborAddress, socket] : m_socketMap) {
+        Ptr<Packet> packet = Create<Packet>((uint8_t*)&lsp, sizeof(LinkStatePacket));
+        socket->Send(packet);
+        std::cout << "LSP sent to neighbor: " << neighborAddress << std::endl;
+    }
 }
 
-// Process received LSA packets and update routing table
 void LinkStateRoutingProtocol::ReceiveLinkStateAdvertisement(Ptr<Socket> socket) {
+    Ptr<Packet> packet = socket->Recv();
+    LinkStatePacket receivedLsp;
+
+    packet->CopyData((uint8_t*)&receivedLsp, sizeof(LinkStatePacket));
+    std::cout << "Router " << m_ipv4->GetAddress(0, 0).GetLocal()
+              << " received LSA from router: " << receivedLsp.lsa.routerAddress
+              << " with sequence number: " << receivedLsp.sequenceNumber << std::endl;
+
+    // Process the received LSP
+    if (m_lsrouting->GetLsdb().at(receivedLsp.lsa.routerAddress).sequenceNumber < receivedLsp.sequenceNumber) {
+        m_lsrouting->ProcessLsp(receivedLsp);
+    }
 }
 
-// Compute shortest paths using Dijkstra’s algorithm
 void LinkStateRoutingProtocol::UpdateRoutingTable() {
+    // Compute shortest paths using Dijkstra’s algorithm
+
     m_lsroutingTable = m_lsrouting->ComputeRoutingTable();
 }
 
@@ -332,7 +347,7 @@ void LinkStateRoutingProtocol::UpdateRoutingTable() {
 LinkStateRoutingProtocol::LinkStateRoutingProtocol() 
     : m_ipv4(0)
 {
-    m_lsrouting = Create<LinkStateRouting>(0); //how are we picking router ids?
+    m_lsrouting = Create<LinkStateRouting>(Ipv4Address("0.0.0.0")); //how are we picking router ids?
     UpdateRoutingTable();
 }
 
@@ -345,8 +360,6 @@ NS_OBJECT_ENSURE_REGISTERED(LinkStateRoutingProtocol);
 
 
 //note: inspiration from https://www.nsnam.org/docs/release/3.19/doxygen/aodv-helper_8cc_source.html#l00043
-//and https://www.nsnam.org/docs/release/3.19/doxygen/ipv4-nix-vector-helper_8cc_source.html#l00037 
-//Lots of inspiration from cross referencing different implementations of derived classes in the docs of ns3 actually
 class LinkStateRoutingHelper : public Ipv4RoutingHelper
 {
 public:
@@ -366,19 +379,19 @@ LinkStateRoutingHelper::LinkStateRoutingHelper()
 }
 
 LinkStateRoutingHelper::LinkStateRoutingHelper(const LinkStateRoutingHelper &o)
-    : m_agentFactory(o.m_agentFactory)
+    : m_agentFactory (o.m_agentFactory)
 {
 }
 
 
 LinkStateRoutingHelper* 
-LinkStateRoutingHelper::Copy(void) const 
+LinkStateRoutingHelper::Copy (void) const 
 {
     return new LinkStateRoutingHelper(*this); 
 }
 
 Ptr<Ipv4RoutingProtocol> 
-LinkStateRoutingHelper::Create(Ptr<Node> node) const
+LinkStateRoutingHelper::Create (Ptr<Node> node) const
 {
     Ptr<LinkStateRoutingProtocol> agent = m_agentFactory.Create<LinkStateRoutingProtocol>();
     node->AggregateObject(agent);
@@ -386,7 +399,7 @@ LinkStateRoutingHelper::Create(Ptr<Node> node) const
 }
 
 void 
-LinkStateRoutingHelper::Set(std::string name, const AttributeValue &value)
+LinkStateRoutingHelper::Set (std::string name, const AttributeValue &value)
 {
     m_agentFactory.Set(name, value);
 }
@@ -427,11 +440,116 @@ std::vector<std::vector<std::pair<uint32_t, double>>> ParseTopology(const std::s
     return adjacencyList;
 }
 
-int
-main(int argc, char* argv[])
+int main(int argc, char* argv[])
 {
-   // Define Network Topology
+    
     CommandLine cmd;
+    cmd.Parse(argc, argv);
+
+    // Create nodes and install stack
+    NodeContainer nodes;
+    nodes.Create(5);
+
+    PointToPointHelper p2p;
+    p2p.SetDeviceAttribute("DataRate", StringValue("5Mbps"));
+    p2p.SetChannelAttribute("Delay", StringValue("2ms"));
+
+    Ipv4StaticRoutingHelper staticRouting;
+    LinkStateRoutingHelper linkStateRouting;  // Your custom LSR helper
+    OlsrHelper olsr;
+
+    Ipv4ListRoutingHelper list;
+
+    list.Add(olsr, 0); // Add your LSR helper with priority 0
+
+    InternetStackHelper stack;
+    //stack.SetRoutingHelper(list);
+    stack.Install(nodes);
+
+    Ipv4AddressHelper address;
+    address.SetBase("10.0.0.0", "255.255.255.0");
+
+    // Connect nodes and assign addresses
+    for (uint32_t i = 0; i < nodes.GetN() - 1; ++i) {
+        NetDeviceContainer devices = p2p.Install(nodes.Get(i), nodes.Get(i + 1));
+        address.Assign(devices);
+        address.NewNetwork();
+    }
+
+    // Print IP addresses
+    std::cout << "IP Addresses of Nodes:" << std::endl;
+    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
+        Ptr<Ipv4> ipv4 = nodes.Get(i)->GetObject<Ipv4>();
+        Ipv4Address addr = ipv4->GetAddress(1, 0).GetLocal();
+        std::cout << "Node " << i << " IP Address: " << addr << std::endl;
+    }
+
+    // Create and initialize LSAs for all nodes
+    std::vector<Ptr<LinkStateRouting>> lsrs;
+    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
+        Ptr<Ipv4> ipv4 = nodes.Get(i)->GetObject<Ipv4>();
+        Ptr<LinkStateRouting> lsr = Create<LinkStateRouting>(ipv4->GetAddress(1, 0).GetLocal());
+        lsrs.push_back(lsr);
+
+        LinkStateAdvertisement lsa;
+        lsa.routerAddress = ipv4->GetAddress(1, 0).GetLocal();
+        lsa.sequenceNumber = 1;
+
+        if (i > 0) {
+            Link linkToPrev;
+            linkToPrev.neighbor = nodes.Get(i - 1)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
+            linkToPrev.cost = 1;
+            linkToPrev.next_hop_interface = 0;
+            lsa.links.push_back(linkToPrev);
+        }
+        if (i < nodes.GetN() - 1) {
+            Link linkToNext;
+            linkToNext.neighbor = nodes.Get(i + 1)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
+            linkToNext.cost = 1;
+            linkToNext.next_hop_interface = 1;
+            lsa.links.push_back(linkToNext);
+        }
+
+        lsr->InitializeLsa(lsa);
+    }
+
+    // Simulate LSP flooding
+    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
+        LinkStatePacket lsp;
+        for (const auto& [router, lsa] : lsrs[i]->GetLsdb()) {
+            lsp.sequenceNumber = lsa.sequenceNumber;
+            lsp.lsa = lsa;  // Send the entire LSA
+            for (uint32_t j = 0; j < nodes.GetN(); ++j) {
+                if (j != i) {
+                    lsrs[j]->ProcessLsp(lsp);
+                }
+            }
+        }
+    }
+
+    // Print the LSDB for all nodes
+    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
+        auto lsdb = lsrs[i]->GetLsdb();
+        std::cout << "LSDB size for Node " << i << ": " << lsdb.size() << '\n';
+        std::cout << "\nLink State Database for Node " << i << ":\n";
+        for (const auto& [router, lsa] : lsdb) {
+            std::cout << "Router: " << router << ", Sequence: " << lsa.sequenceNumber << ", Links:\n";
+            for (const auto& link : lsa.links) {
+                std::cout << "  Neighbor: " << link.neighbor
+                          << ", Cost: " << link.cost
+                          << ", Interface: " << link.next_hop_interface << '\n';
+            }
+        }
+    }
+
+    Simulator::Run();
+    Simulator::Destroy();
+
+    return 0;
+}
+    
+   // Define Network Topology
+    /*CommandLine cmd;
     cmd.Parse(argc, argv);
 
     LogComponentEnable("UdpEchoClientApplication", LOG_LEVEL_INFO);
@@ -451,12 +569,12 @@ main(int argc, char* argv[])
     pointToPoint.SetChannelAttribute("Delay", StringValue("2ms"));
 
     Ipv4StaticRoutingHelper staticRouting;
-    LinkStateRoutingHelper linkStateRouting;
+    LinkStateRoutingHelper linkStateRouting;  // Your custom LSR helper
     OlsrHelper olsr;
 
     Ipv4ListRoutingHelper list;
 
-    list.Add(linkStateRouting, 0); 
+    list.Add(staticRouting, 0); // Add your LSR helper with priority 0
 
     InternetStackHelper stack;
     stack.SetRoutingHelper(list);
@@ -523,3 +641,4 @@ main(int argc, char* argv[])
 
     return 0;
 }
+*/
