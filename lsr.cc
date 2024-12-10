@@ -338,6 +338,7 @@ class LinkStateRoutingHelper : public Ipv4RoutingHelper
 {
 public:
     LinkStateRoutingHelper();
+    LinkStateRoutingHelper(const LinkStateRoutingHelper &);
     LinkStateRoutingHelper* Copy(void) const;
     virtual Ptr<Ipv4RoutingProtocol> Create(Ptr<Node> node) const;
     void Set(std::string name, const AttributeValue &value);
@@ -351,7 +352,7 @@ LinkStateRoutingHelper::LinkStateRoutingHelper()
     m_agentFactory.SetTypeId("ns3::LinkStateRoutingProtocol");
 }
 
-LinkStateRoutingHelper::LinkStateRoutingHelper (const LinkStateRoutingHelper &o)
+LinkStateRoutingHelper::LinkStateRoutingHelper(const LinkStateRoutingHelper &o)
     : m_agentFactory (o.m_agentFactory)
 {
 }
