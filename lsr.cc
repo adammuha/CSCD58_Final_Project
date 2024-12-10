@@ -240,7 +240,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         {
             uint32_t dest = header.GetDestination().Get();
             
-            if (m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
+            if(m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
                 uint32_t next = m_lsroutingTable[dest];
 
                 Ipv4Address nextAdd = Ipv4Address(next);  
@@ -248,7 +248,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
                 route->SetDestination(Ipv4Address(dest)); 
                 route->SetGateway(nextAdd);           
                 uint32_t interfaceO = m_ipv4->GetInterfaceForAddress(nextAdd);
-                route->SetOutputDevice(m_ipv4->GetNetDevice (interfaceO));        
+                route->SetOutputDevice(m_ipv4->GetNetDevice(interfaceO));        
 
                 ucb(route, p, header);
                 return true;
@@ -259,7 +259,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
 
         void PrintRoutingTable(ns3::Ptr<ns3::OutputStreamWrapper>, ns3::Time::Unit) const override
         {
-
+            /*Print the Routing Table entries. */
         }
 
         /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
@@ -279,23 +279,22 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
         void NotifyInterfaceDown(uint32_t interface) override
         {   
-            //no function for remove lsa?
-
-            //notify other routers and then update the routing table
-            SendLinkStateAdvertisement();
-
             UpdateRoutingTable();
         }
-        void NotifyAddAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
-            /* Protocols are expected to implement this method to be notified whenever a new address is added to an interface. 
-            Typically used to add a 'network route' on an interface. Can be invoked on an up or down interface. */
 
+        /* Protocols are expected to implement this method to be notified whenever a new address is added to an interface. 
+            Typically used to add a 'network route' on an interface. Can be invoked on an up or down interface. */
+        void NotifyAddAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
+            UpdateRoutingTable();
         }
-        void NotifyRemoveAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
-            /* Protocols are expected to implement this method to be notified whenever a new address is removed from an interface. 
+
+        /* Protocols are expected to implement this method to be notified whenever a new address is removed from an interface. 
             Typically used to remove the 'network route' of an interface. Can be invoked on an up or down interface.
             */
+        void NotifyRemoveAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
+           UpdateRoutingTable();
         }
+
         void SetIpv4(Ptr<Ipv4> ipv4) override
         {
             m_ipv4 = ipv4;
@@ -316,19 +315,18 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         // ...
 };
 
+// Create and send LSA packets
 void LinkStateRoutingProtocol::SendLinkStateAdvertisement() {
-    // Create and send LSA packets
-
+    UpdateRoutingTable();
 }
 
+// Process received LSA packets and update routing table
 void LinkStateRoutingProtocol::ReceiveLinkStateAdvertisement(Ptr<Socket> socket) {
-    // Process received LSA packets and update routing table
-
+    UpdateRoutingTable();
 }
 
+// Compute shortest paths using Dijkstra’s algorithm
 void LinkStateRoutingProtocol::UpdateRoutingTable() {
-    // Compute shortest paths using Dijkstra’s algorithm
-
     m_lsroutingTable = m_lsrouting->ComputeRoutingTable();
 }
 
@@ -349,6 +347,8 @@ NS_OBJECT_ENSURE_REGISTERED(LinkStateRoutingProtocol);
 
 
 //note: inspiration from https://www.nsnam.org/docs/release/3.19/doxygen/aodv-helper_8cc_source.html#l00043
+//and https://www.nsnam.org/docs/release/3.19/doxygen/ipv4-nix-vector-helper_8cc_source.html#l00037 
+//Lots of inspiration from cross referencing different implementations of derived classes in the docs of ns3 actually
 class LinkStateRoutingHelper : public Ipv4RoutingHelper
 {
 public:
@@ -368,19 +368,19 @@ LinkStateRoutingHelper::LinkStateRoutingHelper()
 }
 
 LinkStateRoutingHelper::LinkStateRoutingHelper(const LinkStateRoutingHelper &o)
-    : m_agentFactory (o.m_agentFactory)
+    : m_agentFactory(o.m_agentFactory)
 {
 }
 
 
 LinkStateRoutingHelper* 
-LinkStateRoutingHelper::Copy (void) const 
+LinkStateRoutingHelper::Copy(void) const 
 {
     return new LinkStateRoutingHelper(*this); 
 }
 
 Ptr<Ipv4RoutingProtocol> 
-LinkStateRoutingHelper::Create (Ptr<Node> node) const
+LinkStateRoutingHelper::Create(Ptr<Node> node) const
 {
     Ptr<LinkStateRoutingProtocol> agent = m_agentFactory.Create<LinkStateRoutingProtocol>();
     node->AggregateObject(agent);
@@ -388,7 +388,7 @@ LinkStateRoutingHelper::Create (Ptr<Node> node) const
 }
 
 void 
-LinkStateRoutingHelper::Set (std::string name, const AttributeValue &value)
+LinkStateRoutingHelper::Set(std::string name, const AttributeValue &value)
 {
     m_agentFactory.Set(name, value);
 }
@@ -458,7 +458,8 @@ main(int argc, char* argv[])
 
     Ipv4ListRoutingHelper list;
 
-    list.Add(staticRouting, 0); // Add your LSR helper with priority 0
+    list.Add(linkStateRouting, 0); // Add your LSR helper with priority 0
+    //list.Add(staticRouting, 10);
 
     InternetStackHelper stack;
     stack.SetRoutingHelper(list);
