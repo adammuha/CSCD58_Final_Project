@@ -201,7 +201,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         }
         LinkStateRoutingProtocol();
         virtual ~LinkStateRoutingProtocol();
-        // Inherited methods from Ipv4RoutingProtocol
+        // Inherited methods from Ipv4RoutingProtocol. Note many of the descriptions are from documentation on nsnam.org
 
         /*Query routing cache for an existing route, for an outbound packet.
         This lookup is used by transport protocols. It does not cause any packet to be forwarded, and is synchronous. 
@@ -317,18 +317,10 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
 
 // Create and send LSA packets
 void LinkStateRoutingProtocol::SendLinkStateAdvertisement() {
-    UpdateRoutingTable();
 }
 
 // Process received LSA packets and update routing table
 void LinkStateRoutingProtocol::ReceiveLinkStateAdvertisement(Ptr<Socket> socket) {
-    Address source;
-    Ptr<Packet> p = socket->RecvFrom(source);
-
-    InetSocketAddress inetSource = InetSocketAddress::ConvertFrom(source);
-    Ipv4Address sender = inetSource.GetIpv4();
-    Ipv4Address receiver = m_socketAddresses[socket].GetLocal();
-
 }
 
 // Compute shortest paths using Dijkstra’s algorithm
@@ -459,13 +451,12 @@ main(int argc, char* argv[])
     pointToPoint.SetChannelAttribute("Delay", StringValue("2ms"));
 
     Ipv4StaticRoutingHelper staticRouting;
-    LinkStateRoutingHelper linkStateRouting;  // Your custom LSR helper
+    LinkStateRoutingHelper linkStateRouting;
     OlsrHelper olsr;
 
     Ipv4ListRoutingHelper list;
 
-    list.Add(linkStateRouting, 0); // Add your LSR helper with priority 0
-    //list.Add(staticRouting, 10);
+    list.Add(linkStateRouting, 0); 
 
     InternetStackHelper stack;
     stack.SetRoutingHelper(list);
