@@ -26,6 +26,15 @@
 #include "ns3/node-container.h"
 #include "ns3/ipv4-routing-helper.h"
 
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <cassert>
+//NOTE: Only for testing purposes
+#include "ns3/olsr-helper.h"
+#include "ns3/ipv4-static-routing-helper.h"
+#include "ns3/ipv4-list-routing-helper.h"
+
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("LinkStateRoutingProtocol"); 
@@ -387,63 +396,121 @@ LinkStateRoutingHelper::Set (std::string name, const AttributeValue &value)
 int
 main(int argc, char* argv[])
 {
-    //Define Network Topology
-    CommandLine cmd;
-    cmd.Parse(argc, argv);
+    // Users may find it convenient to turn on explicit debugging
+  // for selected modules; the below lines suggest how to do this
+#if 0 
+  LogComponentEnable ("SimpleGlobalRoutingExample", LOG_LEVEL_INFO);
+#endif
 
-    LogComponentEnable("UdpEchoClientApplication", LOG_LEVEL_INFO);
-    LogComponentEnable("UdpEchoServerApplication", LOG_LEVEL_INFO);
+  // Set up some default values for the simulation.  Use the 
 
-    NodeContainer nodes;
-    nodes.Create(4);
+  Config::SetDefault ("ns3::OnOffApplication::PacketSize", UintegerValue (210));
+  Config::SetDefault ("ns3::OnOffApplication::DataRate", StringValue ("448kb/s"));
 
-    PointToPointHelper pointToPoint;
-    pointToPoint.SetDeviceAttribute("DataRate", StringValue("5Mbps"));
-    pointToPoint.SetChannelAttribute("Delay", StringValue("2ms"));
+  //DefaultValue::Bind ("DropTailQueue::m_maxPackets", 30);
 
-    NetDeviceContainer devices;
-    devices = pointToPoint.Install(nodes.Get(0), nodes.Get(1));
-    devices = pointToPoint.Install(nodes.Get(1), nodes.Get(2));
-    devices = pointToPoint.Install(nodes.Get(2), nodes.Get(3));
+  // Allow the user to override any of the defaults and the above
+  // DefaultValue::Bind ()s at run-time, via command-line arguments
+  CommandLine cmd;
+  cmd.Parse (argc, argv);
 
-    InternetStackHelper stack;
-    stack.Install(nodes);
+  // Here, we will explicitly create four nodes.  In more sophisticated
+  // topologies, we could configure a node factory.
+  NS_LOG_INFO ("Create nodes.");
+  NodeContainer c;
+  c.Create (5);
+  NodeContainer n02 = NodeContainer (c.Get (0), c.Get (2));
+  NodeContainer n12 = NodeContainer (c.Get (1), c.Get (2));
+  NodeContainer n32 = NodeContainer (c.Get (3), c.Get (2));
+  NodeContainer n34 = NodeContainer (c.Get (3), c.Get (4));
 
-    Ipv4AddressHelper address;
-    address.SetBase("10.1.1.0", "255.255.255.0");
+  // Enable OLSR
+  NS_LOG_INFO ("Enabling OLSR Routing.");
+  OlsrHelper olsr;
 
-    Ipv4InterfaceContainer interfaces;
-    interfaces = address.Assign(devices);
+  Ipv4StaticRoutingHelper staticRouting;
 
-    // Configure Link State Routing:
-    // Assuming there is a link state routing implementation
-    LinkStateRoutingHelper linkStateRouting;
+  LinkStateRoutingHelper linkStateRouting;
 
-    Ipv4ListRoutingHelper list;
-    list.Add(linkStateRouting, 0);               //commented due to declaration commented
+  Ipv4ListRoutingHelper list;
+  //list.Add (staticRouting, 0);
+  list.Add (olsr, 0);
+  //list.Add (linkStateRouting, 0);
 
-    InternetStackHelper stack2;
-    stack2.SetRoutingHelper(list);
-    stack2.Install(nodes);
+  InternetStackHelper internet;
+  internet.SetRoutingHelper (list); // has effect on the next Install ()
+  internet.Install (c);
 
-    //Set Up Applications:
-    uint16_t port = 9;
-    UdpEchoServerHelper server(port);
+  // We create the channels first without any IP addressing information
+  NS_LOG_INFO ("Create channels.");
+  PointToPointHelper p2p;
+  p2p.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
+  p2p.SetChannelAttribute ("Delay", StringValue ("2ms"));
+  NetDeviceContainer nd02 = p2p.Install (n02);
+  NetDeviceContainer nd12 = p2p.Install (n12);
+  p2p.SetDeviceAttribute ("DataRate", StringValue ("1500kbps"));
+  p2p.SetChannelAttribute ("Delay", StringValue ("10ms"));
+  NetDeviceContainer nd32 = p2p.Install (n32);
+  NetDeviceContainer nd34 = p2p.Install (n34);
 
-    ApplicationContainer apps = server.Install(nodes.Get(3));
-    apps.Start(Seconds(1.0));
-    apps.Stop(Seconds(10.0));
+  // Later, we add IP addresses.
+  NS_LOG_INFO ("Assign IP Addresses.");
+  Ipv4AddressHelper ipv4;
+  ipv4.SetBase ("10.1.1.0", "255.255.255.0");
+  Ipv4InterfaceContainer i02 = ipv4.Assign (nd02);
 
-    UdpEchoClientHelper client(interfaces.GetAddress(1), port);
-    client.SetAttribute("MaxPackets", UintegerValue(1));
-    client.SetAttribute("Interval", TimeValue(Seconds(1.0)));
-    client.SetAttribute("PacketSize", UintegerValue(1024));
+  ipv4.SetBase ("10.1.2.0", "255.255.255.0");
+  Ipv4InterfaceContainer i12 = ipv4.Assign (nd12);
 
-    apps = client.Install(nodes.Get(0));
-    apps.Start(Seconds(2.0));
-    apps.Stop(Seconds(10.0));
+  ipv4.SetBase ("10.1.3.0", "255.255.255.0");
+  Ipv4InterfaceContainer i32 = ipv4.Assign (nd32);
 
-    Simulator::Run();
-    Simulator::Destroy();
-    return 0;
+  ipv4.SetBase ("10.1.4.0", "255.255.255.0");
+  Ipv4InterfaceContainer i34 = ipv4.Assign (nd34);
+
+  // Create the OnOff application to send UDP datagrams of size
+  // 210 bytes at a rate of 448 Kb/s from n0 to n4
+  NS_LOG_INFO ("Create Applications.");
+  uint16_t port = 9;   // Discard port (RFC 863)
+
+  OnOffHelper onoff ("ns3::UdpSocketFactory", 
+                     InetSocketAddress (i34.GetAddress (1), port));
+  onoff.SetConstantRate (DataRate ("448kb/s"));
+
+  ApplicationContainer apps = onoff.Install (c.Get (0));
+  apps.Start (Seconds (1.0));
+  apps.Stop (Seconds (10.0));
+
+  // Create a packet sink to receive these packets
+  PacketSinkHelper sink ("ns3::UdpSocketFactory",
+                         InetSocketAddress (Ipv4Address::GetAny (), port));
+
+  apps = sink.Install (c.Get (3));
+  apps.Start (Seconds (1.0));
+  apps.Stop (Seconds (10.0));
+
+  // Create a similar flow from n3 to n1, starting at time 1.1 seconds
+  onoff.SetAttribute ("Remote",
+                      AddressValue (InetSocketAddress (i12.GetAddress (0), port)));
+  apps = onoff.Install (c.Get (3));
+  apps.Start (Seconds (1.1));
+  apps.Stop (Seconds (10.0));
+
+  // Create a packet sink to receive these packets
+  apps = sink.Install (c.Get (1));
+  apps.Start (Seconds (1.1));
+  apps.Stop (Seconds (10.0));
+
+  AsciiTraceHelper ascii;
+  p2p.EnableAsciiAll (ascii.CreateFileStream ("simple-point-to-point-olsr.tr"));
+  p2p.EnablePcapAll ("simple-point-to-point-olsr");
+
+  Simulator::Stop (Seconds (30));
+
+  NS_LOG_INFO ("Run Simulation.");
+  Simulator::Run ();
+  Simulator::Destroy ();
+  NS_LOG_INFO ("Done.");
+
+  return 0;
 }
