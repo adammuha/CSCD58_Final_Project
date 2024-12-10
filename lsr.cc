@@ -201,7 +201,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         }
         LinkStateRoutingProtocol();
         virtual ~LinkStateRoutingProtocol();
-        // Inherited methods from Ipv4RoutingProtocol
+        // Inherited methods from Ipv4RoutingProtocol. Note many of the descriptions are from documentation on nsnam.org
 
         /*Query routing cache for an existing route, for an outbound packet.
         This lookup is used by transport protocols. It does not cause any packet to be forwarded, and is synchronous. 
@@ -240,7 +240,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         {
             uint32_t dest = header.GetDestination().Get();
             
-            if (m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
+            if(m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
                 uint32_t next = m_lsroutingTable[dest];
 
                 Ipv4Address nextAdd = Ipv4Address(next);  
@@ -248,7 +248,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
                 route->SetDestination(Ipv4Address(dest)); 
                 route->SetGateway(nextAdd);           
                 uint32_t interfaceO = m_ipv4->GetInterfaceForAddress(nextAdd);
-                route->SetOutputDevice(m_ipv4->GetNetDevice (interfaceO));        
+                route->SetOutputDevice(m_ipv4->GetNetDevice(interfaceO));        
 
                 ucb(route, p, header);
                 return true;
@@ -257,9 +257,9 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
             return false;
         }
 
+        /*Print the Routing Table entries. */
         void PrintRoutingTable(ns3::Ptr<ns3::OutputStreamWrapper>, ns3::Time::Unit) const override
         {
-
         }
 
         /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
@@ -279,23 +279,22 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         /* Protocols are expected to implement this method to be notified of the state change of an interface in a node. */
         void NotifyInterfaceDown(uint32_t interface) override
         {   
-            //no function for remove lsa?
-
-            //notify other routers and then update the routing table
-            SendLinkStateAdvertisement();
-
             UpdateRoutingTable();
         }
-        void NotifyAddAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
-            /* Protocols are expected to implement this method to be notified whenever a new address is added to an interface. 
-            Typically used to add a 'network route' on an interface. Can be invoked on an up or down interface. */
 
+        /* Protocols are expected to implement this method to be notified whenever a new address is added to an interface. 
+            Typically used to add a 'network route' on an interface. Can be invoked on an up or down interface. */
+        void NotifyAddAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
+            UpdateRoutingTable();
         }
-        void NotifyRemoveAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
-            /* Protocols are expected to implement this method to be notified whenever a new address is removed from an interface. 
+
+        /* Protocols are expected to implement this method to be notified whenever a new address is removed from an interface. 
             Typically used to remove the 'network route' of an interface. Can be invoked on an up or down interface.
             */
+        void NotifyRemoveAddress(uint32_t interface, Ipv4InterfaceAddress address) override {
+           UpdateRoutingTable();
         }
+
         void SetIpv4(Ptr<Ipv4> ipv4) override
         {
             m_ipv4 = ipv4;
@@ -309,26 +308,23 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         // Data structures for routing table and LSA management
         // ...
         Ptr<Ipv4> m_ipv4;
-        std::map<Ipv4Address, Ptr<Socket>> m_socketMap;
+        std::map<Ptr<Socket>, Ipv4InterfaceAddress> m_socketMap;
         //store a link state routing class and routing table?
         Ptr<LinkStateRouting> m_lsrouting;
         std::map<uint32_t, uint32_t> m_lsroutingTable;
         // ...
 };
 
+// Create and send LSA packets
 void LinkStateRoutingProtocol::SendLinkStateAdvertisement() {
-    // Create and send LSA packets
-
 }
 
+// Process received LSA packets and update routing table
 void LinkStateRoutingProtocol::ReceiveLinkStateAdvertisement(Ptr<Socket> socket) {
-    // Process received LSA packets and update routing table
-
 }
 
+// Compute shortest paths using Dijkstra’s algorithm
 void LinkStateRoutingProtocol::UpdateRoutingTable() {
-    // Compute shortest paths using Dijkstra’s algorithm
-
     m_lsroutingTable = m_lsrouting->ComputeRoutingTable();
 }
 
@@ -349,6 +345,8 @@ NS_OBJECT_ENSURE_REGISTERED(LinkStateRoutingProtocol);
 
 
 //note: inspiration from https://www.nsnam.org/docs/release/3.19/doxygen/aodv-helper_8cc_source.html#l00043
+//and https://www.nsnam.org/docs/release/3.19/doxygen/ipv4-nix-vector-helper_8cc_source.html#l00037 
+//Lots of inspiration from cross referencing different implementations of derived classes in the docs of ns3 actually
 class LinkStateRoutingHelper : public Ipv4RoutingHelper
 {
 public:
@@ -368,19 +366,19 @@ LinkStateRoutingHelper::LinkStateRoutingHelper()
 }
 
 LinkStateRoutingHelper::LinkStateRoutingHelper(const LinkStateRoutingHelper &o)
-    : m_agentFactory (o.m_agentFactory)
+    : m_agentFactory(o.m_agentFactory)
 {
 }
 
 
 LinkStateRoutingHelper* 
-LinkStateRoutingHelper::Copy (void) const 
+LinkStateRoutingHelper::Copy(void) const 
 {
     return new LinkStateRoutingHelper(*this); 
 }
 
 Ptr<Ipv4RoutingProtocol> 
-LinkStateRoutingHelper::Create (Ptr<Node> node) const
+LinkStateRoutingHelper::Create(Ptr<Node> node) const
 {
     Ptr<LinkStateRoutingProtocol> agent = m_agentFactory.Create<LinkStateRoutingProtocol>();
     node->AggregateObject(agent);
@@ -388,129 +386,140 @@ LinkStateRoutingHelper::Create (Ptr<Node> node) const
 }
 
 void 
-LinkStateRoutingHelper::Set (std::string name, const AttributeValue &value)
+LinkStateRoutingHelper::Set(std::string name, const AttributeValue &value)
 {
     m_agentFactory.Set(name, value);
+}
+
+// Function to parse the topology file and return an adjacency list with costs
+std::vector<std::vector<std::pair<uint32_t, double>>> ParseTopology(const std::string &filename, uint32_t &numNodes) {
+    std::vector<std::vector<std::pair<uint32_t, double>>> adjacencyList;
+
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        NS_FATAL_ERROR("Unable to open topology file: " << filename);
+    }
+
+    std::string line;
+    uint32_t maxNodeId = 0;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') continue;
+
+        std::istringstream iss(line);
+        uint32_t src, dest;
+        double cost;
+
+        if (!(iss >> src >> dest >> cost)) {
+            NS_FATAL_ERROR("Invalid topology file format.");
+        }
+
+        maxNodeId = std::max(maxNodeId, std::max(src, dest));
+        if (adjacencyList.size() <= maxNodeId) {
+            adjacencyList.resize(maxNodeId + 1);
+        }
+
+        adjacencyList[src].emplace_back(dest, cost);
+        adjacencyList[dest].emplace_back(src, cost);
+    }
+
+    file.close();
+    numNodes = maxNodeId + 1;
+    return adjacencyList;
 }
 
 int
 main(int argc, char* argv[])
 {
-    // Users may find it convenient to turn on explicit debugging
-  // for selected modules; the below lines suggest how to do this
-#if 0 
-  LogComponentEnable ("SimpleGlobalRoutingExample", LOG_LEVEL_INFO);
-#endif
+   // Define Network Topology
+    CommandLine cmd;
+    cmd.Parse(argc, argv);
 
-  // Set up some default values for the simulation.  Use the 
+    LogComponentEnable("UdpEchoClientApplication", LOG_LEVEL_INFO);
+    LogComponentEnable("UdpEchoServerApplication", LOG_LEVEL_INFO);
 
-  Config::SetDefault ("ns3::OnOffApplication::PacketSize", UintegerValue (210));
-  Config::SetDefault ("ns3::OnOffApplication::DataRate", StringValue ("448kb/s"));
+    // Parse topology from file
+    std::string topologyFile = "router_network.txt";
+    uint32_t numNodes = 0; // Variable to hold the number of nodes
+    std::vector<std::vector<std::pair<uint32_t, double>>> topology = ParseTopology(topologyFile, numNodes);
 
-  //DefaultValue::Bind ("DropTailQueue::m_maxPackets", 30);
+    // Build the topology
+    NodeContainer nodes;
+    nodes.Create(numNodes);
 
-  // Allow the user to override any of the defaults and the above
-  // DefaultValue::Bind ()s at run-time, via command-line arguments
-  CommandLine cmd;
-  cmd.Parse (argc, argv);
+    PointToPointHelper pointToPoint;
+    pointToPoint.SetDeviceAttribute("DataRate", StringValue("5Mbps"));
+    pointToPoint.SetChannelAttribute("Delay", StringValue("2ms"));
 
-  // Here, we will explicitly create four nodes.  In more sophisticated
-  // topologies, we could configure a node factory.
-  NS_LOG_INFO ("Create nodes.");
-  NodeContainer c;
-  c.Create (5);
-  NodeContainer n02 = NodeContainer (c.Get (0), c.Get (2));
-  NodeContainer n12 = NodeContainer (c.Get (1), c.Get (2));
-  NodeContainer n32 = NodeContainer (c.Get (3), c.Get (2));
-  NodeContainer n34 = NodeContainer (c.Get (3), c.Get (4));
+    Ipv4StaticRoutingHelper staticRouting;
+    LinkStateRoutingHelper linkStateRouting;
+    OlsrHelper olsr;
 
-  // Enable OLSR
-  NS_LOG_INFO ("Enabling OLSR Routing.");
-  OlsrHelper olsr;
+    Ipv4ListRoutingHelper list;
 
-  Ipv4StaticRoutingHelper staticRouting;
+    list.Add(linkStateRouting, 0); 
 
-  LinkStateRoutingHelper linkStateRouting;
+    InternetStackHelper stack;
+    stack.SetRoutingHelper(list);
+    stack.Install(nodes);
 
-  Ipv4ListRoutingHelper list;
-  //list.Add (staticRouting, 0);
-  list.Add (olsr, 0);
-  //list.Add (linkStateRouting, 0);
+    Ipv4AddressHelper address;
+    address.SetBase("10.0.0.0", "255.255.255.0");
 
-  InternetStackHelper internet;
-  internet.SetRoutingHelper (list); // has effect on the next Install ()
-  internet.Install (c);
+    // Connect nodes as per topology
+    for (uint32_t i = 0; i < topology.size(); ++i) {
+        for (const auto& link : topology[i]) {
+            uint32_t toNode = link.first;
+            double cost = link.second;
 
-  // We create the channels first without any IP addressing information
-  NS_LOG_INFO ("Create channels.");
-  PointToPointHelper p2p;
-  p2p.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
-  p2p.SetChannelAttribute ("Delay", StringValue ("2ms"));
-  NetDeviceContainer nd02 = p2p.Install (n02);
-  NetDeviceContainer nd12 = p2p.Install (n12);
-  p2p.SetDeviceAttribute ("DataRate", StringValue ("1500kbps"));
-  p2p.SetChannelAttribute ("Delay", StringValue ("10ms"));
-  NetDeviceContainer nd32 = p2p.Install (n32);
-  NetDeviceContainer nd34 = p2p.Install (n34);
+            NetDeviceContainer devices = pointToPoint.Install(nodes.Get(i), nodes.Get(toNode));
+            std::ostringstream delay;
+            delay << cost << "ms";
+            pointToPoint.SetChannelAttribute("Delay", StringValue(delay.str()));
 
-  // Later, we add IP addresses.
-  NS_LOG_INFO ("Assign IP Addresses.");
-  Ipv4AddressHelper ipv4;
-  ipv4.SetBase ("10.1.1.0", "255.255.255.0");
-  Ipv4InterfaceContainer i02 = ipv4.Assign (nd02);
+            // Assign IP addresses to the devices
+            address.Assign(devices);
+            address.NewNetwork();
+        }
+    }
 
-  ipv4.SetBase ("10.1.2.0", "255.255.255.0");
-  Ipv4InterfaceContainer i12 = ipv4.Assign (nd12);
+    // Print the topology with costs
+    std::cout << "Network Topology (with Costs):" << std::endl;
+    for (uint32_t i = 0; i < topology.size(); ++i) {
+        for (const auto& link : topology[i]) {
+            std::cout << "Node " << i << " <--> Node " << link.first
+                      << " (Delay: " << link.second << "ms, Cost: " << link.second << ")" << std::endl;
+        }
+    }
 
-  ipv4.SetBase ("10.1.3.0", "255.255.255.0");
-  Ipv4InterfaceContainer i32 = ipv4.Assign (nd32);
+    // Print the IP addresses of all nodes
+    std::cout << "\nIP Addresses of Nodes:" << std::endl;
+    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
+        Ptr<Ipv4> ipv4 = nodes.Get(i)->GetObject<Ipv4>();
+        Ipv4Address address = ipv4->GetAddress(1, 0).GetLocal();
+        std::cout << "Node " << i << " IP Address: " << address << std::endl;
+    }
 
-  ipv4.SetBase ("10.1.4.0", "255.255.255.0");
-  Ipv4InterfaceContainer i34 = ipv4.Assign (nd34);
+    // Echo Application Setup
+    uint16_t port = 9;
 
-  // Create the OnOff application to send UDP datagrams of size
-  // 210 bytes at a rate of 448 Kb/s from n0 to n4
-  NS_LOG_INFO ("Create Applications.");
-  uint16_t port = 9;   // Discard port (RFC 863)
+    // Install Echo Server on Node 2
+    UdpEchoServerHelper echoServer(port);
+    ApplicationContainer serverApps = echoServer.Install(nodes.Get(2)); // Node 2
+    serverApps.Start(Seconds(1.0));
+    serverApps.Stop(Seconds(10.0));
 
-  OnOffHelper onoff ("ns3::UdpSocketFactory", 
-                     InetSocketAddress (i34.GetAddress (1), port));
-  onoff.SetConstantRate (DataRate ("448kb/s"));
+    // Install Echo Client on Node 0
+    UdpEchoClientHelper echoClient(Ipv4Address("10.0.1.2"), port); // Node 2's IP
+    echoClient.SetAttribute("MaxPackets", UintegerValue(3));
+    echoClient.SetAttribute("Interval", TimeValue(Seconds(1.0)));
+    echoClient.SetAttribute("PacketSize", UintegerValue(1024));
 
-  ApplicationContainer apps = onoff.Install (c.Get (0));
-  apps.Start (Seconds (1.0));
-  apps.Stop (Seconds (10.0));
+    ApplicationContainer clientApps = echoClient.Install(nodes.Get(0)); // Node 0
+    clientApps.Start(Seconds(2.0));
+    clientApps.Stop(Seconds(10.0));
 
-  // Create a packet sink to receive these packets
-  PacketSinkHelper sink ("ns3::UdpSocketFactory",
-                         InetSocketAddress (Ipv4Address::GetAny (), port));
+    Simulator::Run();
+    Simulator::Destroy();
 
-  apps = sink.Install (c.Get (3));
-  apps.Start (Seconds (1.0));
-  apps.Stop (Seconds (10.0));
-
-  // Create a similar flow from n3 to n1, starting at time 1.1 seconds
-  onoff.SetAttribute ("Remote",
-                      AddressValue (InetSocketAddress (i12.GetAddress (0), port)));
-  apps = onoff.Install (c.Get (3));
-  apps.Start (Seconds (1.1));
-  apps.Stop (Seconds (10.0));
-
-  // Create a packet sink to receive these packets
-  apps = sink.Install (c.Get (1));
-  apps.Start (Seconds (1.1));
-  apps.Stop (Seconds (10.0));
-
-  AsciiTraceHelper ascii;
-  p2p.EnableAsciiAll (ascii.CreateFileStream ("simple-point-to-point-olsr.tr"));
-  p2p.EnablePcapAll ("simple-point-to-point-olsr");
-
-  Simulator::Stop (Seconds (30));
-
-  NS_LOG_INFO ("Run Simulation.");
-  Simulator::Run ();
-  Simulator::Destroy ();
-  NS_LOG_INFO ("Done.");
-
-  return 0;
+    return 0;
 }
