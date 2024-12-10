@@ -351,6 +351,12 @@ LinkStateRoutingHelper::LinkStateRoutingHelper()
     m_agentFactory.SetTypeId("ns3::LinkStateRoutingProtocol");
 }
 
+LinkStateRoutingHelper::LinkStateRoutingHelper (const LinkStateRoutingHelper &o)
+    : m_agentFactory (o.m_agentFactory)
+{
+}
+
+
 LinkStateRoutingHelper* 
 LinkStateRoutingHelper::Copy (void) const 
 {
