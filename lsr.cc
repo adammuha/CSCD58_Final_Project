@@ -210,7 +210,6 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         //https://www.nsnam.org/docs/release/3.19/doxygen/classns3_1_1_ipv4_routing_protocol.html#a9c0e9b77772a4974c06ee4577fe60547
         Ptr<Ipv4Route> RouteOutput(Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr) {
         Ipv4Address dest = header.GetDestination();
-         Ipv4Address origin = header.GetSource ();
             NS_LOG_DEBUG("RouteOutput "<<this << " " << m_ipv4->GetObject<Node> ()->GetId () << " " << header.GetDestination ());
         if (m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
             Ipv4Address nextHop = m_lsroutingTable[dest];
