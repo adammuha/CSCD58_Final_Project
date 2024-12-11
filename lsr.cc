@@ -432,10 +432,115 @@ std::vector<std::vector<std::pair<uint32_t, double>>> ParseTopology(const std::s
     return adjacencyList;
 }
 
-int
-main(int argc, char* argv[])
-{
 
+int main(int argc, char* argv[])
+{
+    //Use multi-line comment to easily switch between the two main tests
+    CommandLine cmd;
+    cmd.Parse(argc, argv);
+
+    // Create nodes and install stack
+    NodeContainer nodes;
+    nodes.Create(5);
+
+    PointToPointHelper p2p;
+    p2p.SetDeviceAttribute("DataRate", StringValue("5Mbps"));
+    p2p.SetChannelAttribute("Delay", StringValue("2ms"));
+
+    Ipv4StaticRoutingHelper staticRouting;
+    LinkStateRoutingHelper linkStateRouting;
+    //As noted in header, this is here purely for testing purposes, to compare our solution against optimized link state routing on ns3
+    OlsrHelper olsr;
+
+    Ipv4ListRoutingHelper list;
+
+    list.Add(linkStateRouting, 0);
+
+    InternetStackHelper stack;
+    stack.SetRoutingHelper(list);
+    stack.Install(nodes);
+
+    Ipv4AddressHelper address;
+    address.SetBase("10.0.0.0", "255.255.255.0");
+
+    // Connect nodes and assign addresses
+    for (uint32_t i = 0; i < nodes.GetN() - 1; ++i) {
+        NetDeviceContainer devices = p2p.Install(nodes.Get(i), nodes.Get(i + 1));
+        address.Assign(devices);
+        address.NewNetwork();
+    }
+
+    // Print IP addresses
+    std::cout << "IP Addresses of Nodes:" << std::endl;
+    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
+        Ptr<Ipv4> ipv4 = nodes.Get(i)->GetObject<Ipv4>();
+        Ipv4Address addr = ipv4->GetAddress(1, 0).GetLocal();
+        std::cout << "Node " << i << " IP Address: " << addr << std::endl;
+    }
+
+    // Create and initialize LSAs for all nodes
+    std::vector<Ptr<LinkStateRouting>> lsrs;
+    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
+        Ptr<Ipv4> ipv4 = nodes.Get(i)->GetObject<Ipv4>();
+        Ptr<LinkStateRouting> lsr = Create<LinkStateRouting>(ipv4->GetAddress(1, 0).GetLocal());
+        lsrs.push_back(lsr);
+
+        LinkStateAdvertisement lsa;
+        lsa.routerAddress = ipv4->GetAddress(1, 0).GetLocal();
+        lsa.sequenceNumber = 1;
+
+        if (i > 0) {
+            Link linkToPrev;
+            linkToPrev.neighbor = nodes.Get(i - 1)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
+            linkToPrev.cost = 1;
+            linkToPrev.next_hop_interface = 0;
+            lsa.links.push_back(linkToPrev);
+        }
+        if (i < nodes.GetN() - 1) {
+            Link linkToNext;
+            linkToNext.neighbor = nodes.Get(i + 1)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
+            linkToNext.cost = 1;
+            linkToNext.next_hop_interface = 1;
+            lsa.links.push_back(linkToNext);
+        }
+
+        lsr->InitializeLsa(lsa);
+    }
+
+    // Simulate LSP flooding
+    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
+        LinkStatePacket lsp;
+        for (const auto& [router, lsa] : lsrs[i]->GetLsdb()) {
+            lsp.sequenceNumber = lsa.sequenceNumber;
+            lsp.lsa = lsa;  // Send the entire LSA
+            for (uint32_t j = 0; j < nodes.GetN(); ++j) {
+                if (j != i) {
+                    lsrs[j]->ProcessLsp(lsp);
+                }
+            }
+        }
+    }
+
+    // Print the LSDB for all nodes
+    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
+        auto lsdb = lsrs[i]->GetLsdb();
+        std::cout << "LSDB size for Node " << i << ": " << lsdb.size() << '\n';
+        std::cout << "\nLink State Database for Node " << i << ":\n";
+        for (const auto& [router, lsa] : lsdb) {
+            std::cout << "Router: " << router << ", Sequence: " << lsa.sequenceNumber << ", Links:\n";
+            for (const auto& link : lsa.links) {
+                std::cout << "  Neighbor: " << link.neighbor
+                          << ", Cost: " << link.cost
+                          << ", Interface: " << link.next_hop_interface << '\n';
+            }
+        }
+    }
+
+    Simulator::Run();
+    Simulator::Destroy();
+
+    return 0;
+    /*
     // Define Network Topology
     CommandLine cmd;
     cmd.Parse(argc, argv);
@@ -458,11 +563,12 @@ main(int argc, char* argv[])
 
     Ipv4StaticRoutingHelper staticRouting;
     LinkStateRoutingHelper linkStateRouting;
+    //As noted in header, this is here purely for testing purposes, to compare our solution against optimized link state routing on ns3
     OlsrHelper olsr;
 
     Ipv4ListRoutingHelper list;
 
-    list.Add(linkStateRouting, 0); 
+    list.Add(linkStateRouting, 0);
 
     InternetStackHelper stack;
     stack.SetRoutingHelper(list);
@@ -523,107 +629,6 @@ main(int argc, char* argv[])
     ApplicationContainer clientApps = echoClient.Install(nodes.Get(0)); // Node 0
     clientApps.Start(Seconds(2.0));
     clientApps.Stop(Seconds(10.0));
-
-    Simulator::Run();
-    Simulator::Destroy();
-
-    return 0;
-    /*
-    CommandLine cmd;
-    cmd.Parse(argc, argv);
-
-    // Create nodes and install stack
-    NodeContainer nodes;
-    nodes.Create(5);
-
-    PointToPointHelper p2p;
-    p2p.SetDeviceAttribute("DataRate", StringValue("5Mbps"));
-    p2p.SetChannelAttribute("Delay", StringValue("2ms"));
-
-    Ipv4StaticRoutingHelper staticRouting;
-    LinkStateRoutingHelper linkStateRouting;
-    OlsrHelper olsr;
-
-    Ipv4ListRoutingHelper list;
-
-    list.Add(linkStateRouting, 0); 
-
-    InternetStackHelper stack;
-    stack.SetRoutingHelper(list);
-    stack.Install(nodes);
-
-    Ipv4AddressHelper address;
-    address.SetBase("10.0.0.0", "255.255.255.0");
-
-    // Connect nodes and assign addresses
-    for (uint32_t i = 0; i < nodes.GetN() - 1; ++i) {
-        NetDeviceContainer devices = p2p.Install(nodes.Get(i), nodes.Get(i + 1));
-        address.Assign(devices);
-        address.NewNetwork();
-    }
-
-    // Print IP addresses
-    std::cout << "IP Addresses of Nodes:" << std::endl;
-    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
-        Ptr<Ipv4> ipv4 = nodes.Get(i)->GetObject<Ipv4>();
-        Ipv4Address addr = ipv4->GetAddress(1, 0).GetLocal();
-        std::cout << "Node " << i << " IP Address: " << addr << std::endl;
-    }
-
-    // Create and initialize LSAs for all nodes
-    std::vector<Ptr<LinkStateRouting>> lsrs;
-    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
-        Ptr<Ipv4> ipv4 = nodes.Get(i)->GetObject<Ipv4>();
-        Ptr<LinkStateRouting> lsr = Create<LinkStateRouting>(ipv4->GetAddress(1, 0).GetLocal());
-        lsrs.push_back(lsr);
-
-        LinkStateAdvertisement lsa;
-        lsa.routerAddress = ipv4->GetAddress(1, 0).GetLocal();
-        lsa.sequenceNumber = 1;
-
-        if (i > 0) {
-            Link linkToPrev;
-            linkToPrev.neighbor = nodes.Get(i - 1)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
-            linkToPrev.cost = 1;
-            linkToPrev.next_hop_interface = 0;
-            lsa.links.push_back(linkToPrev);
-        }
-        if (i < nodes.GetN() - 1) {
-            Link linkToNext;
-            linkToNext.neighbor = nodes.Get(i + 1)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
-            linkToNext.cost = 1;
-            linkToNext.next_hop_interface = 1;
-            lsa.links.push_back(linkToNext);
-        }
-
-        lsr->InitializeLsa(lsa);
-    }
-
-    // Simulate LSP flooding
-    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
-        LinkStatePacket lsp;
-        lsp.sequenceNumber = 1;
-        lsp.lsa = lsrs[i]->GetLsdb().begin()->second;
-        for (uint32_t j = 0; j < nodes.GetN(); ++j) {
-            if (j != i) {
-                lsrs[j]->ProcessLsp(lsp);
-            }
-        }
-    }
-
-    // Print the LSDB for all nodes
-    for (uint32_t i = 0; i < nodes.GetN(); ++i) {
-        auto lsdb = lsrs[i]->GetLsdb();
-        std::cout << "\nLink State Database for Node " << i << ":\n";
-        for (const auto& [router, lsa] : lsdb) {
-            std::cout << "Router: " << router << ", Sequence: " << lsa.sequenceNumber << ", Links:\n";
-            for (const auto& link : lsa.links) {
-                std::cout << "  Neighbor: " << link.neighbor
-                          << ", Cost: " << link.cost
-                          << ", Interface: " << link.next_hop_interface << '\n';
-            }
-        }
-    }
 
     Simulator::Run();
     Simulator::Destroy();
