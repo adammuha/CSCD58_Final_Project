@@ -289,7 +289,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         void ReceiveLinkStateAdvertisement(Ptr<Socket> socket);
         void UpdateRoutingTable();
         Ptr<Ipv4> m_ipv4;
-        std::map<Ptr<Socket>, Ipv4InterfaceAddress> m_socketMap;
+        std::map<Ipv4Address, Ptr<Socket>> m_socketMap;
         Ptr<LinkStateRouting> m_lsrouting;
         std::map<Ipv4Address, Ipv4Address> m_lsroutingTable;
 };
