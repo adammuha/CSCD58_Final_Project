@@ -307,6 +307,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
             // use first interface as main address by default for now
             m_mainAddress =  m_ipv4->GetAddress (0, 0).GetLocal ();
         }
+        
         bool IsOwnAddress(Ipv4Address originAddress) {
             for (uint32_t i = 0; i < m_ipv4->GetNInterfaces (); i++)
                 {
@@ -374,7 +375,7 @@ LinkStateRoutingProtocol::LinkStateRoutingProtocol()
     UpdateRoutingTable();
 }
 
-//Deconstructor
+//Destructor
 LinkStateRoutingProtocol::~LinkStateRoutingProtocol()
 {
 }
