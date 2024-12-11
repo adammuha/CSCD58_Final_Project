@@ -242,8 +242,9 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
             Ipv4Address origin = header.GetSource();
             NS_LOG_DEBUG("RouteInput "<<this << " " << m_ipv4->GetObject<Node> ()->GetId () << " " << header.GetDestination ());   
             
-            // no need to route packets being sent to me
-            if(IsOwnAddress(header.GetDestination())){
+            // no need to route packets being sent by me
+            if(IsOwnAddress(header.GetSource())){
+                // RouteOutput should handle it
                 return true;
             }
             // local routing / call back
@@ -252,6 +253,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
                 NS_LOG_DEBUG( "Local Delivery");
                 if (!lcb.IsNull ()) {
                     lcb (p, header, interfaceNum);
+                    // lcb should call processLSA if LSA
                     return true;
                 } else {
                     // let other call backs handle it
