@@ -26,7 +26,6 @@
 #include "ns3/node-container.h"
 #include "ns3/ipv4-routing-helper.h"
 
-#include <iostream>
 #include <fstream>
 #include <string>
 #include <cassert>
@@ -469,7 +468,7 @@ std::vector<std::vector<std::pair<uint32_t, double>>> ParseTopology(const std::s
 
 int main(int argc, char* argv[])
 {
-    //Use multi-line comment to easily switch between the two main tests
+    /*Use multi-line comment to easily switch between the two main tests
     CommandLine cmd;
     cmd.Parse(argc, argv);
 
@@ -574,7 +573,7 @@ int main(int argc, char* argv[])
     Simulator::Destroy();
 
     return 0;
-    /*
+    */
     // Define Network Topology
     CommandLine cmd;
     cmd.Parse(argc, argv);
@@ -668,5 +667,5 @@ int main(int argc, char* argv[])
     Simulator::Destroy();
 
     return 0;
-    */
+    
 }
