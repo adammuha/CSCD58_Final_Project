@@ -78,9 +78,9 @@ public:
     void ProcessLsp(const LinkStatePacket& lsp);
     std::map<Ipv4Address, LinkStateAdvertisement> GetLsdb() const;
     std::map<Ipv4Address, Ipv4Address> ComputeRoutingTable();
-
-private:
     Ipv4Address m_routerAddress;
+private:
+    
     LinkStateDatabase m_lsdb;
     LinkStateAdvertisement m_lsa;
 };
@@ -210,10 +210,13 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         //https://www.nsnam.org/docs/release/3.19/doxygen/classns3_1_1_ipv4_routing_protocol.html#a9c0e9b77772a4974c06ee4577fe60547
         Ptr<Ipv4Route> RouteOutput(Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr) {
         Ipv4Address dest = header.GetDestination();
+         Ipv4Address origin = header.GetSource ();
+            NS_LOG_DEBUG("RouteOutput "<<this << " " << m_ipv4->GetObject<Node> ()->GetId () << " " << header.GetDestination ());
         if (m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
             Ipv4Address nextHop = m_lsroutingTable[dest];
             Ptr<Ipv4Route> route = Create<Ipv4Route>();
             route->SetDestination(dest);
+            route->SetSource(m_mainAddress);
             route->SetGateway(nextHop);
             uint32_t interfaceIndex = m_ipv4->GetInterfaceForAddress(nextHop);
             route->SetOutputDevice(m_ipv4->GetNetDevice(interfaceIndex));
@@ -222,6 +225,7 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
 
             //https://www.nsnam.org/docs/release/3.19/doxygen/classns3_1_1_socket.html#ada1328c5ae0c28cb2a982caf8f6d6ccaa0f8ecb5a4ddbce3bade35fa12c3d49e8
             sockerr = Socket::ERROR_NOROUTETOHOST;
+            NS_LOG_DEBUG("RouteOutput failed");
             return NULL;
         }
 
@@ -233,18 +237,39 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         bool RouteInput(ns3::Ptr<const ns3::Packet> p, const ns3::Ipv4Header& header, ns3::Ptr<const ns3::NetDevice> idev, const UnicastForwardCallback& ucb, const MulticastForwardCallback& mcb, const LocalDeliverCallback& lcb, const ErrorCallback& ecb) override
         {
             Ipv4Address dest = header.GetDestination();
+            Ipv4Address origin = header.GetSource();
+            NS_LOG_DEBUG("RouteInput "<<this << " " << m_ipv4->GetObject<Node> ()->GetId () << " " << header.GetDestination ());   
+            
+            // no need to route packets being sent to me
+            if(IsOwnAddress(header.GetDestination())){
+                return true;
+            }
+            // local routing / call back
+            uint32_t interfaceNum = m_ipv4->GetInterfaceForDevice (idev);
+            if (m_ipv4->IsDestinationAddress (dest, interfaceNum)) {
+                NS_LOG_DEBUG( "Local Delivery");
+                if (!lcb.IsNull ()) {
+                    lcb (p, header, interfaceNum);
+                    return true;
+                } else {
+                    // let other call backs handle it
+                    return false;
+                }
+            }
             if (m_lsroutingTable.find(dest) != m_lsroutingTable.end()) {
                 Ipv4Address nextHop = m_lsroutingTable[dest];
                 Ptr<Ipv4Route> route = Create<Ipv4Route>();
                 route->SetDestination(dest);
                 route->SetGateway(nextHop);
+                route->SetSource(origin); 
                 uint32_t interfaceIndex = m_ipv4->GetInterfaceForAddress(nextHop);
                 route->SetOutputDevice(m_ipv4->GetNetDevice(interfaceIndex));
-
+                NS_LOG_DEBUG("RouteInput forwarding to" << (dest)
+                     << " via " << nextHop);
                 ucb(route, p, header);
                 return true;
             }
-
+            NS_LOG_DEBUG("RouteInput packet has failed.");
             return false;
         }
 
@@ -281,14 +306,24 @@ class LinkStateRoutingProtocol : public Ipv4RoutingProtocol {
         void SetIpv4(Ptr<Ipv4> ipv4) override
         {
             m_ipv4 = ipv4;
+            // use first interface as main address by default for now
+            m_mainAddress =  m_ipv4->GetAddress (0, 0).GetLocal ();
         }
-        
+        bool IsOwnAddress(Ipv4Address originAddress) {
+            for (uint32_t i = 0; i < m_ipv4->GetNInterfaces (); i++)
+                {
+                    Ipv4Address addr = m_ipv4->GetAddress (i, 0).GetLocal ();
+                    if(addr == originAddress)return true;
+            }
+            return false;
+        }
 
     private:
         void SendLinkStateAdvertisement();
         void ReceiveLinkStateAdvertisement(Ptr<Socket> socket);
         void UpdateRoutingTable();
         Ptr<Ipv4> m_ipv4;
+        Ipv4Address m_mainAddress;
         std::map<Ipv4Address, Ptr<Socket>> m_socketMap;
         Ptr<LinkStateRouting> m_lsrouting;
         std::map<Ipv4Address, Ipv4Address> m_lsroutingTable;
