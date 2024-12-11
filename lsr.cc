@@ -99,6 +99,7 @@ std::map<Ipv4Address, LinkStateAdvertisement> LinkStateDatabase::GetLsdb() const
     return m_lsdb;
 }
 
+// Checks if given lsa is newer
 bool LinkStateDatabase::IsNewerLsa(const LinkStateAdvertisement& lsa) const {
     auto it = m_lsdb.find(lsa.routerAddress);
     return (it == m_lsdb.end() || it->second.sequenceNumber < lsa.sequenceNumber);
@@ -109,12 +110,14 @@ bool LinkStateDatabase::IsNewerLsa(const LinkStateAdvertisement& lsa) const {
 // Initialize the router with its ipv4 address
 LinkStateRouting::LinkStateRouting(Ipv4Address routerAddress) : m_routerAddress(routerAddress) {}
 
+// Initializes lsa for the router
 void LinkStateRouting::InitializeLsa(const LinkStateAdvertisement& lsa) {
     m_lsa = lsa;
     m_lsdb.AddOrUpdateLsa(m_lsa);
     std::cout << "Initialized LSA for router address: " << lsa.routerAddress << std::endl;
 }
 
+// checks if the given LSP contains a newer LSA, updates the LSDB if true, and logs the flooding process.
 void LinkStateRouting::FloodLsp(const LinkStatePacket& lsp) {
     // Check if the LSP is new
     if (m_lsdb.IsNewerLsa(lsp.lsa)) {
@@ -125,8 +128,8 @@ void LinkStateRouting::FloodLsp(const LinkStatePacket& lsp) {
     }
 }
 
+// Handles an incoming lsp and logs the process
 void LinkStateRouting::ProcessLsp(const LinkStatePacket& lsp) {
-    // Handle an incoming LSP
     if (m_lsdb.IsNewerLsa(lsp.lsa)) {
         // Update the LSDB if the LSP is new
         m_lsdb.AddOrUpdateLsa(lsp.lsa);
@@ -135,11 +138,12 @@ void LinkStateRouting::ProcessLsp(const LinkStatePacket& lsp) {
     }
 }
 
+// returns the lsdb for router
 std::map<Ipv4Address, LinkStateAdvertisement> LinkStateRouting::GetLsdb() const {
-    // Return the LSDB for debugging or route computation
     return m_lsdb.GetLsdb();
 }
 
+// Computes the shortest path routing table using Dijkstra's algorithm, returning the next hop for each reachable destination
 std::map<Ipv4Address, Ipv4Address> LinkStateRouting::ComputeRoutingTable() {
     const auto& lsdb = m_lsdb.GetLsdb();
     std::map<Ipv4Address, uint32_t> distances;
@@ -633,7 +637,7 @@ int main(int argc, char* argv[])
     for (uint32_t i = 0; i < topology.size(); ++i) {
         for (const auto& link : topology[i]) {
             std::cout << "Node " << i << " <--> Node " << link.first
-                      << " (Delay: " << link.second << "ms, Cost: " << link.second << ")" << std::endl;
+                      << " (Delay: " << link.second << "ms)" << std::endl;
         }
     }
 
